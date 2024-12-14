@@ -96,7 +96,7 @@ func ReadSecrets() ([][KeyLength]byte, error) {
 		}
 
 		// I don't like this
-		var fixed [64]byte
+		var fixed [KeyLength]byte
 		copy(fixed[:], key)
 
 		keys = append(keys, fixed)
