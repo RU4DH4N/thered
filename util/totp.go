@@ -96,7 +96,7 @@ func ReadSecrets() ([][KeyLength]byte, error) {
 		}
 
 		// I don't like this
-		var fixed [64]byte
+		var fixed [KeyLength]byte
 		copy(fixed[:], key)
 
 		keys = append(keys, fixed)
@@ -107,7 +107,12 @@ func ReadSecrets() ([][KeyLength]byte, error) {
 	return keys, nil
 }
 
-func getLoaded() (*[]totp, error) {
+func CheckSequence(sequence []uint16) (bool, error) {
+
+	if len(sequence) < 1 {
+		return false, nil // maybe return an error message
+	}
+
 	once.Do(func() {
 		secrets, err := ReadSecrets()
 
@@ -116,19 +121,33 @@ func getLoaded() (*[]totp, error) {
 			return
 		}
 
-		// port sequence will be a function call
 		for _, s := range secrets {
 			loadedTotps = append(loadedTotps, totp{s, []uint16{1, 2, 3}, sync.Mutex{}})
 		}
 	})
 
 	if onceErr != nil {
-		return nil, onceErr
+		return false, onceErr
 	}
 
-	return &loadedTotps, nil
-}
+	isValid := false
 
-func checkTotp(sequence []int) {
+	for i := range loadedTotps {
+		testSequence := loadedTotps[i].GetSequence()
 
+		if len(sequence) > len(testSequence) {
+			continue // this should probably be break not continue
+		}
+
+		for i = 0; i < len(sequence); i++ {
+			if sequence[i] != testSequence[i] {
+				isValid = false
+				break
+			} else {
+				isValid = true
+			}
+		}
+	}
+
+	return isValid, nil
 }
