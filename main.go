@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"os/exec"
+	"reflect"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -100,6 +101,8 @@ func ProcessPacket(packet gopacket.Packet) {
 		return
 	}
 
+	// need to filter packets here
+
 	if transLayer := packet.TransportLayer(); transLayer != nil {
 		if udp, ok := transLayer.(*layers.UDP); ok {
 			port = uint16(udp.DstPort)
@@ -125,10 +128,13 @@ func ProcessPacket(packet gopacket.Packet) {
 	var currentAttempt KnockAttempt
 
 	if x, found := currentAttempts.Load(key); found {
-		if currentAttempt, ok := x.(KnockAttempt); !ok {
+		if attempt, ok := x.(KnockAttempt); ok {
+			currentAttempt = attempt
 			currentAttempt.knockSequence = append(currentAttempt.knockSequence, port)
+			fmt.Printf("current sequence from found %v\n", currentAttempt.knockSequence)
+
 		} else {
-			log.Fatalln("this shouldn't happen")
+			fmt.Printf("currentAttempt is not of type 'KnockAttempt', of type: %v", reflect.TypeOf(x))
 			return
 		}
 	} else {
@@ -139,7 +145,7 @@ func ProcessPacket(packet gopacket.Packet) {
 	}
 
 	if isValid, err := totp_manager.CheckSequence(currentAttempt.knockSequence); !isValid || err != nil {
-		fmt.Printf("deleting %v\n", senderIP)
+		fmt.Printf("deleting %v with sequence %v\n", senderIP, currentAttempt.knockSequence)
 
 		if err != nil {
 			fmt.Printf("error: %v", err)
@@ -151,6 +157,5 @@ func ProcessPacket(packet gopacket.Packet) {
 
 	fmt.Printf("updating %v with sequence %v\n", key, currentAttempt.knockSequence)
 	currentAttempts.Store(key, currentAttempt)
-
 	// need to determine if sequence is complete and figure out which port needs to be opened
 }

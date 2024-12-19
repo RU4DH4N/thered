@@ -111,7 +111,7 @@ func ReadSecrets() ([][KeyLength]byte, error) {
 func CheckSequence(sequence []uint16) (bool, error) {
 
 	if len(sequence) < 1 {
-		return false, nil // maybe return an error message
+		return false, fmt.Errorf("length of sequence: %d\n", len(sequence))
 	}
 
 	once.Do(func() {
