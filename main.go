@@ -128,7 +128,7 @@ func ProcessPacket(packet gopacket.Packet) {
 	var currentAttempt KnockAttempt
 
 	if x, found := currentAttempts.Load(key); found {
-		if attempt, ok := x.(KnockAttempt); ok {
+		if attempt, ok := x.(KnockAttempt); ok { // TEMPORARY
 			currentAttempt = attempt
 			currentAttempt.knockSequence = append(currentAttempt.knockSequence, port)
 			fmt.Printf("current sequence from found %v\n", currentAttempt.knockSequence)
