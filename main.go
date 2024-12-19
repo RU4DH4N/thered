@@ -1,12 +1,11 @@
 package main
 
-// ignore this file for now.
-
 import (
 	"fmt"
 	"log"
 	"net"
 	"os/exec"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +14,10 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+)
+
+const (
+	memoryLimit = 50 // limit in MiB
 )
 
 type KnockAttempt struct {
@@ -38,11 +41,9 @@ func removeInvalidAttempts() {
 	})
 }
 
-func addAttempt(sender net.IP, attempt KnockAttempt) {
-	currentAttempts.Store(sender, attempt)
-}
-
 func GetDefaultInterfaceName() (string, error) {
+
+	// Definitely a better way to do this.
 	cmd := exec.Command("sh", "-c", "ip route | grep default | awk '{print $5}' | head -n 1")
 	output, err := cmd.Output()
 
@@ -59,6 +60,10 @@ func GetDefaultInterfaceName() (string, error) {
 }
 
 func main() {
+
+	// need to stress test this
+	debug.SetMemoryLimit(memoryLimit * 1024 * 1024)
+
 	interfaceName, err := GetDefaultInterfaceName()
 
 	if err != nil {
@@ -82,40 +87,70 @@ func main() {
 }
 
 func ProcessPacket(packet gopacket.Packet) {
+
+	if packet == nil {
+		return
+	}
+
 	var srcIP gopacket.Endpoint
 	var port uint16
 	if netLayer := packet.NetworkLayer(); netLayer != nil {
 		srcIP, _ = netLayer.NetworkFlow().Endpoints()
+	} else {
+		return
 	}
 
 	if transLayer := packet.TransportLayer(); transLayer != nil {
 		if udp, ok := transLayer.(*layers.UDP); ok {
 			port = uint16(udp.DstPort)
+			if port == 0 {
+				return
+			}
 		} else {
 			return // only udp packets
 		}
+	} else {
+		return
 	}
 
 	senderIP := net.IP(srcIP.Raw())
 
-	// this isn't going to work (it's making a copy which I need to set back.)
-	if x, found := currentAttempts.Load(senderIP); found {
-		attempt, ok := x.(KnockAttempt)
-
-		if !ok {
-			return
-		}
-
-		attempt.knockSequence = append(attempt.knockSequence, port)
-
-		// this is temporary
-		if isValid, err := totp_manager.CheckSequence(attempt.knockSequence); !isValid || err != nil {
-			log.Println(err)
-			return
-		}
-
-		// We can assume that the sequence is valid at this point...
-		// need to somehow check if the sequence is complete (sequence + port to open)
-		// maybe CheckSequence should return (bool, bool, error) with the second bool being isComplete?
+	if senderIP.IsUnspecified() {
+		return
 	}
+
+	var key [16]byte
+	copy(key[:], senderIP.To16())
+
+	var currentAttempt KnockAttempt
+
+	if x, found := currentAttempts.Load(key); found {
+		if currentAttempt, ok := x.(KnockAttempt); !ok {
+			currentAttempt.knockSequence = append(currentAttempt.knockSequence, port)
+		} else {
+			log.Fatalln("this shouldn't happen")
+			return
+		}
+	} else {
+		currentAttempt = KnockAttempt{
+			firstKnock:    time.Now(),
+			knockSequence: []uint16{port},
+		}
+	}
+
+	if isValid, err := totp_manager.CheckSequence(currentAttempt.knockSequence); !isValid || err != nil {
+		fmt.Printf("deleting %v\n", senderIP)
+
+		if err != nil {
+			fmt.Printf("error: %v", err)
+		}
+
+		currentAttempts.Delete(key)
+		return
+	}
+
+	fmt.Printf("updating %v with sequence %v\n", key, currentAttempt.knockSequence)
+	currentAttempts.Store(key, currentAttempt)
+
+	// need to determine if sequence is complete and figure out which port needs to be opened
 }

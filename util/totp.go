@@ -12,8 +12,9 @@ import (
 
 // change this so it's loaded from a config file?
 const (
-	Prefix    = "thered"
-	KeyLength = 64
+	Prefix          = "thered"
+	KeyLength       = 64
+	SecretKeyFolder = "secrets/"
 )
 
 type totp struct {
@@ -66,12 +67,12 @@ func (t *totp) GetSequence() []uint16 {
 func ReadSecrets() ([][KeyLength]byte, error) {
 	var files []string
 
-	err := filepath.Walk("secrets/", func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(SecretKeyFolder, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if !info.IsDir() && filepath.Ext(info.Name()) == Prefix {
+		if !info.IsDir() && filepath.Ext(info.Name()) == "."+Prefix {
 			files = append(files, path)
 		}
 		return nil
@@ -122,7 +123,7 @@ func CheckSequence(sequence []uint16) (bool, error) {
 		}
 
 		for _, s := range secrets {
-			loadedTotps = append(loadedTotps, totp{s, []uint16{1, 2, 3}, sync.Mutex{}})
+			loadedTotps = append(loadedTotps, totp{s, CalculateSequence(s), sync.Mutex{}})
 		}
 	})
 
@@ -133,11 +134,10 @@ func CheckSequence(sequence []uint16) (bool, error) {
 	isValid := false
 
 	for i := range loadedTotps {
-		testSequence := loadedTotps[i].GetSequence()
 
-		if len(sequence) > len(testSequence) {
-			continue // this should probably be break not continue
-		}
+		testSequence := loadedTotps[i].GetSequence()[0:len(sequence)]
+
+		fmt.Printf("Checking if %v like %v\n", sequence, testSequence)
 
 		for i = 0; i < len(sequence); i++ {
 			if sequence[i] != testSequence[i] {
