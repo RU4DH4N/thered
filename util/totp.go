@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 )
@@ -20,6 +21,7 @@ const (
 type totp struct {
 	secret          [KeyLength]byte
 	currentSequence []uint16
+	used            bool
 	mu              sync.Mutex
 }
 
@@ -62,6 +64,12 @@ func (t *totp) GetSequence() []uint16 {
 	sequenceCopy := make([]uint16, len(t.currentSequence))
 	copy(sequenceCopy, t.currentSequence)
 	return sequenceCopy
+}
+
+func (t *totp) SetUsed() { // this will be set to false when the sequence is changed
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.used = true
 }
 
 func ReadSecrets() ([][KeyLength]byte, error) {
@@ -111,7 +119,7 @@ func ReadSecrets() ([][KeyLength]byte, error) {
 func CheckSequence(sequence []uint16) (bool, error) {
 
 	if len(sequence) < 1 {
-		return false, fmt.Errorf("length of sequence: %d\n", len(sequence))
+		return false, fmt.Errorf("length of sequence: %d", len(sequence))
 	}
 
 	once.Do(func() {
@@ -123,7 +131,7 @@ func CheckSequence(sequence []uint16) (bool, error) {
 		}
 
 		for _, s := range secrets {
-			loadedTotps = append(loadedTotps, totp{s, CalculateSequence(s), sync.Mutex{}})
+			loadedTotps = append(loadedTotps, totp{s, CalculateSequence(s), false, sync.Mutex{}})
 		}
 	})
 
@@ -131,23 +139,37 @@ func CheckSequence(sequence []uint16) (bool, error) {
 		return false, onceErr
 	}
 
-	isValid := false
-
 	for i := range loadedTotps {
 
-		testSequence := loadedTotps[i].GetSequence()[0:len(sequence)]
+		if loadedTotps[i].used { // check if I need to add a GetUsed method
+			continue
+		}
+
+		testSequence := loadedTotps[i].GetSequence()
+
+		sequenceLength := len(testSequence) // this could be a hardcoded value, but just incase.
+
+		if len(testSequence) > len(sequence) {
+			testSequence = testSequence[0:len(sequence)]
+		} else {
+			return false, fmt.Errorf("sequence longer than expected (%d), found %d", sequenceLength, len(sequence))
+		}
+
+		testSequence = testSequence[0:len(sequence)]
 
 		fmt.Printf("Checking if %v like %v\n", sequence, testSequence)
 
-		for i = 0; i < len(sequence); i++ {
-			if sequence[i] != testSequence[i] {
-				isValid = false
-				break
-			} else {
-				isValid = true
+		isValid := slices.Equal(sequence, testSequence)
+
+		if isValid {
+
+			if len(sequence) == sequenceLength {
+				loadedTotps[i].SetUsed()
 			}
+
+			return true, nil
 		}
 	}
 
-	return isValid, nil
+	return false, nil
 }
