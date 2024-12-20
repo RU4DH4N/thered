@@ -131,7 +131,7 @@ func CheckSequence(sequence []uint16) (bool, error) {
 		}
 
 		/*
-		 * This check's if the totp sequence needs updating and returns true if the sequence is update
+		 * This check's if the totp sequence needs updating and returns true if the sequence is updated
 		 * if the sequence has been updated and this check isn't for the first element - return false
 		 */
 
