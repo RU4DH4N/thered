@@ -21,12 +21,13 @@ const (
 type totp struct {
 	secret          [KeyLength]byte
 	currentSequence []uint16
-	used            bool
-	mu              sync.Mutex
+	lastUpdated     time.Time
+
+	// the only downside of this is a port can only be opened once every 30 seconds
+	used bool
 }
 
 var loadedTotps []totp
-var ticker time.Ticker
 
 var once sync.Once
 var onceErr error
@@ -51,25 +52,9 @@ func CalculateSequence(secret [KeyLength]byte) []uint16 {
 	return ports
 }
 
-func (t *totp) UpdateSequence() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.currentSequence = CalculateSequence(t.secret)
-}
-
-func (t *totp) GetSequence() []uint16 {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	sequenceCopy := make([]uint16, len(t.currentSequence))
-	copy(sequenceCopy, t.currentSequence)
-	return sequenceCopy
-}
-
-func (t *totp) SetUsed() { // this will be set to false when the sequence is changed
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.used = true
+func (t *totp) Update() bool {
+	// implement this
+	return false
 }
 
 func ReadSecrets() ([][KeyLength]byte, error) {
@@ -119,7 +104,7 @@ func ReadSecrets() ([][KeyLength]byte, error) {
 func CheckSequence(sequence []uint16) (bool, error) {
 
 	if len(sequence) < 1 {
-		return false, fmt.Errorf("length of sequence: %d", len(sequence))
+		return false, nil
 	}
 
 	once.Do(func() {
@@ -131,7 +116,7 @@ func CheckSequence(sequence []uint16) (bool, error) {
 		}
 
 		for _, s := range secrets {
-			loadedTotps = append(loadedTotps, totp{s, CalculateSequence(s), false, sync.Mutex{}})
+			loadedTotps = append(loadedTotps, totp{s, CalculateSequence(s), time.Now(), false})
 		}
 	})
 
@@ -141,21 +126,31 @@ func CheckSequence(sequence []uint16) (bool, error) {
 
 	for i := range loadedTotps {
 
-		if loadedTotps[i].used { // check if I need to add a GetUsed method
+		if loadedTotps[i].used {
 			continue
 		}
 
-		testSequence := loadedTotps[i].GetSequence()
+		/*
+		 * This check's if the totp sequence needs updating and returns true if the sequence is update
+		 * if the sequence has been updated and this check isn't for the first element - return false
+		 */
 
-		sequenceLength := len(testSequence) // this could be a hardcoded value, but just incase.
+		if loadedTotps[i].Update() && len(sequence) != 1 {
+			return false, nil
+		}
+
+		var testSequence []uint16
+		if len(loadedTotps[i].currentSequence) > len(sequence) {
+			testSequence = loadedTotps[i].currentSequence[0:len(sequence)]
+		} else {
+			return false, fmt.Errorf("sequence longer than expected (%d), found %d", len(loadedTotps[i].currentSequence), len(sequence))
+		}
 
 		if len(testSequence) > len(sequence) {
 			testSequence = testSequence[0:len(sequence)]
 		} else {
-			return false, fmt.Errorf("sequence longer than expected (%d), found %d", sequenceLength, len(sequence))
+			return false, fmt.Errorf("sequence longer than expected (%d), found %d", len(testSequence), len(sequence))
 		}
-
-		testSequence = testSequence[0:len(sequence)]
 
 		fmt.Printf("Checking if %v like %v\n", sequence, testSequence)
 
@@ -163,8 +158,8 @@ func CheckSequence(sequence []uint16) (bool, error) {
 
 		if isValid {
 
-			if len(sequence) == sequenceLength {
-				loadedTotps[i].SetUsed()
+			if len(sequence) == len(loadedTotps[i].currentSequence) {
+				loadedTotps[i].used = true
 			}
 
 			return true, nil
