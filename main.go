@@ -28,17 +28,15 @@ type KnockAttempt struct {
 
 var currentAttempts sync.Map
 
-func removeInvalidAttempts() {
+func RemoveInvalidAttempts() {
 	currentAttempts.Range(func(key, value interface{}) bool {
-		addr := key.(net.IP)
 		attempt := value.(KnockAttempt)
 
-		rounded := attempt.firstKnock.Truncate(30 * time.Second)
-		if time.Since(rounded) >= 30*time.Second {
-			fmt.Println("Removing", addr)
-			currentAttempts.Delete(addr)
+		rounded := attempt.firstKnock.Truncate(totp_manager.SequenceInterval)
+		if time.Since(rounded) >= totp_manager.SequenceInterval {
+			currentAttempts.Delete(key)
 		}
-		return true // Continue iteration
+		return true
 	})
 }
 
