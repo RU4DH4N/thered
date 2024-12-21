@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -59,9 +60,25 @@ func GetDefaultInterfaceName() (string, error) {
 }
 
 func main() {
-
-	// need to stress test this
 	debug.SetMemoryLimit(memoryLimit * 1024 * 1024)
+
+	// this probably isn't necessary
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func(ctx context.Context) {
+		ticker := time.NewTicker(totp_manager.SequenceInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				RemoveInvalidAttempts()
+			case <-ctx.Done():
+				return
+			}
+		}
+	}(ctx)
 
 	interfaceName, err := GetDefaultInterfaceName()
 

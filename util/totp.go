@@ -130,7 +130,7 @@ func CheckSequence(sequence []uint16) (bool, error) {
 
 		t := time.Now()
 		for _, s := range secrets {
-			loadedTotps = append(loadedTotps, totp{s, CalculateSequence(t, s), time.Now(), false})
+			loadedTotps = append(loadedTotps, totp{s, CalculateSequence(t, s), t, false})
 		}
 	})
 
@@ -153,17 +153,13 @@ func CheckSequence(sequence []uint16) (bool, error) {
 			return false, nil
 		}
 
+		sequenceLength := len(loadedTotps[i].currentSequence)
+
 		var testSequence []uint16
-		if len(loadedTotps[i].currentSequence) > len(sequence) {
+		if sequenceLength >= len(sequence) {
 			testSequence = loadedTotps[i].currentSequence[0:len(sequence)]
 		} else {
-			return false, fmt.Errorf("sequence longer than expected (%d), found %d", len(loadedTotps[i].currentSequence), len(sequence))
-		}
-
-		if len(testSequence) > len(sequence) {
-			testSequence = testSequence[0:len(sequence)]
-		} else {
-			return false, fmt.Errorf("sequence longer than expected (%d), found %d", len(testSequence), len(sequence))
+			return false, fmt.Errorf("sequence longer than expected (%d), found %d", sequenceLength, len(sequence))
 		}
 
 		fmt.Printf("Checking if %v like %v\n", sequence, testSequence)
@@ -172,7 +168,7 @@ func CheckSequence(sequence []uint16) (bool, error) {
 
 		if isValid {
 
-			if len(sequence) == len(loadedTotps[i].currentSequence) {
+			if len(sequence) == sequenceLength {
 				loadedTotps[i].used = true
 			}
 
