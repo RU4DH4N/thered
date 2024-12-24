@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/RU4DH4N/thered/util"
 	totp_manager "github.com/RU4DH4N/thered/util"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -67,7 +68,7 @@ func main() {
 	defer cancel()
 
 	go func(ctx context.Context) {
-		ticker := time.NewTicker(totp_manager.SequenceInterval)
+		ticker := time.NewTicker(util.SequenceInterval)
 		defer ticker.Stop()
 
 		for {

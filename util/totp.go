@@ -1,4 +1,4 @@
-package totp_manager
+package util
 
 import (
 	"crypto/sha512"
