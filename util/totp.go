@@ -1,8 +1,10 @@
 package totp_manager
 
 import (
+	"crypto/rand"
 	"crypto/sha512"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -93,24 +95,19 @@ func ReadSecrets() ([][KeyLength]byte, error) {
 	for _, filename := range files {
 		key, err := os.ReadFile(filename)
 		if err != nil {
-			fmt.Printf("Error reading key from %s: %v\n", filename, err)
 			continue
 		}
 
-		if len(key) != KeyLength {
-			fmt.Printf("Error: Key in %s is not %d bytes (got %d bytes)\n", filename, KeyLength, len(key))
+		if len(key) < KeyLength {
 			continue
 		}
 
 		// I don't like this
 		var fixed [KeyLength]byte
-		copy(fixed[:], key)
+		copy(fixed[:], key[0:KeyLength])
 
 		keys = append(keys, fixed)
 	}
-
-	fmt.Printf("Read %d of %d keys succssfully\n", len(keys), len(files))
-
 	return keys, nil
 }
 
@@ -162,8 +159,6 @@ func CheckSequence(sequence []uint16) (bool, error) {
 			return false, fmt.Errorf("sequence longer than expected (%d), found %d", sequenceLength, len(sequence))
 		}
 
-		fmt.Printf("Checking if %v like %v\n", sequence, testSequence)
-
 		isValid := slices.Equal(sequence, testSequence)
 
 		if isValid {
@@ -177,4 +172,13 @@ func CheckSequence(sequence []uint16) (bool, error) {
 	}
 
 	return false, nil
+}
+
+func GenerateSecret() (string, error) {
+	key := make([]byte, KeyLength)
+	_, err := rand.Read(key)
+	if err != nil {
+		return "", fmt.Errorf("couldn't create key: %w", err)
+	}
+	return hex.EncodeToString(key), nil
 }

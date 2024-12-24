@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
+	"os"
 	"os/exec"
 	"reflect"
 	"runtime/debug"
@@ -59,8 +60,28 @@ func GetDefaultInterfaceName() (string, error) {
 	return interfaceName, nil
 }
 
+var logger *slog.Logger
+
 func main() {
 	debug.SetMemoryLimit(memoryLimit * 1024 * 1024)
+
+	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		AddSource: true,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			// Format timestamp as Linux logs do
+			if a.Key == slog.TimeKey {
+				a.Value = slog.StringValue(time.Now().Format("2006-01-02 15:04:05"))
+			}
+			// Use custom levels for severity
+			if a.Key == slog.LevelKey {
+				a.Value = slog.StringValue(a.Value.String())
+			}
+			return a
+		},
+	})
+
+	logger = slog.New(handler)
+	logger.Info("Logger Started")
 
 	// this probably isn't necessary
 	ctx, cancel := context.WithCancel(context.Background())
@@ -83,14 +104,15 @@ func main() {
 	interfaceName, err := GetDefaultInterfaceName()
 
 	if err != nil {
-		log.Fatalf("failed to get default interface: %v", err)
-		return
+		logger.Error("failed to get default interface", "error", err)
+		os.Exit(1)
 	}
 
 	handle, err := pcap.OpenLive(interfaceName, 1600, false, pcap.BlockForever)
 
 	if err != nil {
-		log.Fatalf("failed to open device %s: %v", interfaceName, err)
+		logger.Error("failed to open device", "interface", interfaceName, "error", err)
+		os.Exit(1)
 	}
 
 	defer handle.Close()
@@ -146,13 +168,14 @@ func ProcessPacket(packet gopacket.Packet) {
 		if attempt, ok := x.(KnockAttempt); ok { // TEMPORARY
 			currentAttempt = attempt
 			currentAttempt.knockSequence = append(currentAttempt.knockSequence, port)
-			fmt.Printf("current sequence from found %v\n", currentAttempt.knockSequence)
 
+			logger.Info("sequence found", "sequence", currentAttempt.knockSequence)
 		} else {
-			fmt.Printf("currentAttempt is not of type 'KnockAttempt', of type: %v", reflect.TypeOf(x))
+			logger.Warn("currentAttempt not of type 'KnockAttempt', returning early", "type", reflect.TypeOf(x))
 			return
 		}
 	} else {
+		logger.Info("creating new knock attempt", "sequence", port)
 		currentAttempt = KnockAttempt{
 			firstKnock:    time.Now(),
 			knockSequence: []uint16{port},
@@ -160,17 +183,17 @@ func ProcessPacket(packet gopacket.Packet) {
 	}
 
 	if isValid, err := totp_manager.CheckSequence(currentAttempt.knockSequence); !isValid || err != nil {
-		fmt.Printf("deleting %v with sequence %v\n", senderIP, currentAttempt.knockSequence)
+		logger.Info("deleting KnockAttempt", "sender", senderIP, "sequence", currentAttempt.knockSequence)
 
 		if err != nil {
-			fmt.Printf("error: %v", err)
+			logger.Error("unable to check sequence, deleting knock attempt", "error", err)
 		}
 
 		currentAttempts.Delete(key)
 		return
 	}
 
-	fmt.Printf("updating %v with sequence %v\n", key, currentAttempt.knockSequence)
+	logger.Info("updating KnockAttempt", "sequence", currentAttempt.knockSequence)
 	currentAttempts.Store(key, currentAttempt)
 	// need to determine if sequence is complete and figure out which port needs to be opened
 }
