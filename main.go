@@ -65,20 +65,7 @@ var logger *slog.Logger
 func main() {
 	debug.SetMemoryLimit(memoryLimit * 1024 * 1024)
 
-	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		AddSource: true,
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			// Format timestamp as Linux logs do
-			if a.Key == slog.TimeKey {
-				a.Value = slog.StringValue(time.Now().Format("2006-01-02 15:04:05"))
-			}
-			// Use custom levels for severity
-			if a.Key == slog.LevelKey {
-				a.Value = slog.StringValue(a.Value.String())
-			}
-			return a
-		},
-	})
+	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{ AddSource: true })
 
 	logger = slog.New(handler)
 	logger.Info("Logger Started")
