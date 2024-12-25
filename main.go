@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/RU4DH4N/thered/util"
-	totp_manager "github.com/RU4DH4N/thered/util"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
@@ -30,13 +29,14 @@ type KnockAttempt struct {
 }
 
 var currentAttempts sync.Map
+var sequenceInterval time.Duration
 
 func RemoveInvalidAttempts() {
 	currentAttempts.Range(func(key, value interface{}) bool {
 		attempt := value.(KnockAttempt)
 
-		rounded := attempt.firstKnock.Truncate(totp_manager.SequenceInterval)
-		if time.Since(rounded) >= totp_manager.SequenceInterval {
+		rounded := attempt.firstKnock.Truncate(sequenceInterval)
+		if time.Since(rounded) >= sequenceInterval {
 			currentAttempts.Delete(key)
 		}
 		return true
@@ -66,17 +66,21 @@ var logger *slog.Logger
 func main() {
 	debug.SetMemoryLimit(memoryLimit * 1024 * 1024)
 
-	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{ AddSource: true })
+	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{AddSource: true})
 
 	logger = slog.New(handler)
 	logger.Info("Logger Started")
+
+	config := util.GetConfig()
+	sequenceInterval = config.SequenceInterval()
 
 	// this probably isn't necessary
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go func(ctx context.Context) {
-		ticker := time.NewTicker(util.SequenceInterval)
+
+		ticker := time.NewTicker(sequenceInterval)
 		defer ticker.Stop()
 
 		for {
@@ -170,7 +174,7 @@ func ProcessPacket(packet gopacket.Packet) {
 		}
 	}
 
-	if isValid, err := totp_manager.CheckSequence(currentAttempt.knockSequence); !isValid || err != nil {
+	if isValid, err := util.CheckSequence(currentAttempt.knockSequence); !isValid || err != nil {
 		logger.Info("deleting KnockAttempt", "sender", senderIP, "sequence", currentAttempt.knockSequence)
 
 		if err != nil {

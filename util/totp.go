@@ -13,16 +13,14 @@ import (
 	"time"
 )
 
-// change this so it's loaded from a config file?
-const (
-	Prefix           = "thered"
-	KeyLength        = 64
-	SecretKeyFolder  = "secrets/"
-	SequenceInterval = 30 * time.Second
-)
+var Prefix string
+var KeyLength int
+var SecretKeyFolder string
+var SequenceInterval time.Duration
+var IntervalValue uint
 
 type totp struct {
-	secret          [KeyLength]byte
+	secret          []byte
 	currentSequence []uint16
 	lastUpdated     time.Time
 
@@ -35,7 +33,7 @@ var loadedTotps []totp
 var once sync.Once
 var onceErr error
 
-func CalculateSequence(t time.Time, secret [KeyLength]byte) []uint16 {
+func CalculateSequence(t time.Time, secret []byte) []uint16 {
 	hasher := sha512.New()
 
 	counter := make([]byte, 8)
@@ -72,7 +70,7 @@ func (t *totp) Update() bool {
 	return true
 }
 
-func ReadSecrets() ([][KeyLength]byte, error) {
+func ReadSecrets() ([][]byte, error) {
 	var files []string
 
 	err := filepath.Walk(SecretKeyFolder, func(path string, info os.FileInfo, err error) error {
@@ -90,7 +88,7 @@ func ReadSecrets() ([][KeyLength]byte, error) {
 		return nil, fmt.Errorf("failed to walk through folder: %w", err)
 	}
 
-	keys := make([][KeyLength]byte, 0, len(files))
+	keys := make([][]byte, 0, len(files))
 
 	for _, filename := range files {
 		key, err := os.ReadFile(filename)
@@ -102,11 +100,7 @@ func ReadSecrets() ([][KeyLength]byte, error) {
 			continue
 		}
 
-		// I don't like this
-		var fixed [KeyLength]byte
-		copy(fixed[:], key[0:KeyLength])
-
-		keys = append(keys, fixed)
+		keys = append(keys, key)
 	}
 	return keys, nil
 }
@@ -118,6 +112,15 @@ func CheckSequence(sequence []uint16) (bool, error) {
 	}
 
 	once.Do(func() {
+
+		config := GetConfig()
+
+		Prefix = config.Prefix()
+		KeyLength = config.KeyLength()
+		SecretKeyFolder = config.SecretKeyFolder()
+		SequenceInterval = config.SequenceInterval()
+		IntervalValue = config.IntervalValue()
+
 		secrets, err := ReadSecrets()
 
 		if err != nil {

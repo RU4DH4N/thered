@@ -7,7 +7,7 @@ import (
 
 type Config struct {
 	prefix           string
-	keyLength        uint
+	keyLength        int
 	secretKeyFolder  string
 	sequenceInterval time.Duration
 }
@@ -16,7 +16,7 @@ func (c *Config) Prefix() string {
 	return c.prefix
 }
 
-func (c *Config) KeyLength() uint {
+func (c *Config) KeyLength() int {
 	return c.keyLength
 }
 func (c *Config) SecretKeyFolder() string {
@@ -24,7 +24,11 @@ func (c *Config) SecretKeyFolder() string {
 }
 
 func (c *Config) SequenceInterval() time.Duration {
-	return c.sequenceInterval
+	return c.sequenceInterval // need to check that duration isn't negative, maybe.
+}
+
+func (c *Config) IntervalValue() uint {
+	return uint(c.sequenceInterval / time.Second)
 }
 
 const (
@@ -42,7 +46,7 @@ func init() {
 			prefix:           "thered",
 			keyLength:        64,
 			secretKeyFolder:  "secrets/",
-			sequenceInterval: 30 * time.Second,
+			sequenceInterval: 30,
 		}
 	}
 }
@@ -53,4 +57,8 @@ func Exists(path string) bool {
 		return true
 	}
 	return false
+}
+
+func GetConfig() Config {
+	return *config
 }
