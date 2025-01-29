@@ -2,7 +2,6 @@ package util
 
 import (
 	"crypto/rand"
-	"crypto/sha512"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -34,19 +33,14 @@ var once sync.Once
 var onceErr error
 
 func CalculateSequence(t time.Time, secret []byte) []uint16 {
-	hasher := sha512.New()
-
 	counter := make([]byte, 8)
 	binary.BigEndian.PutUint64(counter, uint64(t.Unix())/30)
 
-	hasher.Write(secret[:])
-	hasher.Write(counter[:])
-
-	hash := hasher.Sum(nil)
+	hash := hmac_SHA1(secret, counter)
+	
 	ports := []uint16{}
 
 	for i := 0; i < len(hash)/2; i++ {
-		// SHA-512 always generates a 64-byte hash (therefore even)
 		portValue := binary.BigEndian.Uint16(hash[i*2 : (i+1)*2])
 		ports = append(ports, uint16(portValue))
 	}
